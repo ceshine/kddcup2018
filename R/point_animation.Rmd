@@ -1,0 +1,81 @@
+---
+title: "Animated PM 2.5 Dispersion"
+author: "Ceshine Lee"
+date: "April 11, 2018"
+output:
+  html_document:
+    fig_width: 8
+    fig_height: 6
+---
+
+```{r setup, include=FALSE}
+library(checkpoint)
+Sys.setenv(HTTP_PROXY="http://127.0.0.1:11233/")
+Sys.setenv(HTTPS_PROXY="http://127.0.0.1:11233/")
+checkpoint("2018-02-25", scanForPackages=F)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Libraries
+
+```{r libraries, message = FALSE, results="hide", warning = FALSE}
+library(data.table)
+library(ggplot2)
+library(lubridate)
+library(gganimate)
+```
+
+## Read and Preprocess Data
+
+Using data from [KDD CUP of Fresh Air](https://biendata.com/competition/kdd_2018/data/).
+
+```{r data}
+bj_aq <- rbindlist(lapply(Sys.glob("../data/bj_*_renamed_aq.csv", dirmark = FALSE), fread))
+bj_station <- fread("../data/Beijing_AirQuality_Stations.csv")
+# Dedup
+bj_aq <- bj_aq[!duplicated(bj_aq, from_last=T)]
+# Parse time
+bj_aq[, time:=with_tz(ymd_hms(bj_aq[, time], tz="UTC"), tz="Asia/Shanghai")]
+# Filling Gaps in Time
+full_keys <- expand.grid(
+    time=seq(ymd_hms("2017-01-01 16:00:00"), 
+             ymd_hms("2018-03-30 16:00:00"), 
+             by="1 hour"),
+    station_id=unique(bj_aq[,station_id])
+)
+bj_aq_full <- merge(bj_aq, full_keys, by=c("time", "station_id"), all.y=T)
+bj_aq_full <- merge(bj_aq_full, bj_station, by="station_id") 
+```
+
+## Single Snaphot
+(Missing data points are colored white.)
+
+```{r snapshot}
+# Single snapshot
+p <- ggplot(bj_aq_full[time==ymd_hms("2017-01-02 00:00:00")], 
+       aes(x=Longitude, y=Latitude, fill=PM25_Concentration)) +
+    geom_point(size=3, pch=21, color="grey50") + scale_fill_gradient(
+        low = "#FFFF99", high = "#990000",
+        na.value = "grey50", guide = "colourbar") 
+p + theme_minimal() + 
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+```
+
+## Animation Over A Short Period of Time
+(Missing data points are colored white.)
+
+```{r animate_short, message = FALSE, results="hide", warning = FALSE}
+p <- ggplot(bj_aq_full[time<ymd_hms("2017-01-10 00:00:00")], 
+            aes(x=Longitude, y=Latitude, fill=pmin(500, PM25_Concentration),
+                frame=time, cumulative=FALSE)) +
+    geom_point(size=8, pch=21, color="grey50") + 
+    scale_fill_gradient(low = "#FFFF99", high = "#990000",
+        na.value = "white", guide = "colourbar") 
+p <- p + theme_minimal() + labs(fill="PM25") +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+animation <- gganimate(p, "animation_tmp.gif", interval = 0.5, ani.width = 1280, ani.height = 720)
+# gganimate(p, interval = 0.5, ani.width = 1280,
+#   ani.height = 720, filename="pm25_0101_0110.mp4", other.opts = "-pix_fmt yuv420p")
+```
+
+![Animation](animation_tmp.gif)

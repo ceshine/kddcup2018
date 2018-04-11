@@ -1,0 +1,135 @@
+---
+title: "PM 2.5 Line Charts"
+author: "Ceshine Lee"
+date: "April 11, 2018"
+output:
+  html_document:
+    fig_width: 9
+    fig_height: 4
+---
+
+```{r setup, include=FALSE}
+library(checkpoint)
+Sys.setenv(HTTP_PROXY="http://127.0.0.1:11233/")
+Sys.setenv(HTTPS_PROXY="http://127.0.0.1:11233/")
+checkpoint("2018-02-25", scanForPackages=F)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Libraries
+
+```{r libraries, message = FALSE, results="hide", warning = FALSE}
+library(data.table)
+library(zoo)
+library(dygraphs)
+library(lubridate)
+# Set Timezone
+Sys.setenv(TZ='Asia/Shanghai')
+```
+
+## Read and Preprocess Data
+
+Using data from [KDD CUP of Fresh Air](https://biendata.com/competition/kdd_2018/data/).
+
+```{r data}
+bj_aq <- rbindlist(lapply(Sys.glob("../data/bj_*_renamed_aq.csv", dirmark = FALSE), fread))
+bj_station <- fread("../data/Beijing_AirQuality_Stations.csv")
+# Dedup
+bj_aq <- bj_aq[!duplicated(bj_aq, from_last=T)]
+# Parse time
+bj_aq[, time:=with_tz(ymd_hms(bj_aq[, time], tz="UTC"), tz="Asia/Shanghai")]
+# Filling Gaps in Time
+full_keys <- expand.grid(
+    time=seq(ymd_hms("2017-01-01 16:00:00"), 
+             ymd_hms("2018-03-30 16:00:00"), 
+             by="1 hour"),
+    station_id=unique(bj_aq[,station_id])
+)
+bj_aq_full <- merge(bj_aq, full_keys, by=c("time", "station_id"), all.y=T)
+# Convert to Date
+bj_aq_full[, date:=as.Date(time, tz="Asia/Shanghai")]
+
+# Calculate Daily Statistics (clips max upper to 500)
+quality <- bj_aq_full[, .(
+    median=as.numeric(median(PM25_Concentration, na.rm=T)), 
+    avg=mean(PM25_Concentration, na.rm=T),
+    upper=pmin(500, quantile(PM25_Concentration, probs=0.95, na.rm=T)), 
+    lower=quantile(PM25_Concentration, probs=0.05, na.rm=T)), 
+by=.(station_id, date)] 
+```
+
+## Aotizhongxin (Olympic Sports Centre)
+AQI calculation references:
+1. https://aqs.epa.gov/aqsweb/documents/codetables/aqi_breakpoints.html
+2. http://aqicn.org/mask/
+
+```{r aotizhongxin}
+dygraph(
+    quality[station_id=="aotizhongxin_aq", .(date, lower, avg, upper)], 
+    main="Aotizhongxin Daily PM2.5 Concentration (Max clipped to 500)") %>% 
+dyAxis("x", drawGrid=F) %>% dyAxis("y", drawGrid=F) %>%
+dySeries(c("lower", "avg", "upper"), label="PM2.5") %>%
+dyShading(0, 12, color="#ccff99", axis="y") %>%
+dyLimit(0, "good", labelLoc="right", color="grey") %>%
+dyLimit(12, "moderate", labelLoc="right", color="grey") %>%
+dyLimit(35, "unhealthy for sensitive groups", labelLoc="right", color="grey") %>%
+dyLimit(55, "unhealthy", labelLoc="right", color="grey") %>%    
+dyLimit(150, "very unhealthy", labelLoc="right", color="grey") %>% 
+dyLimit(250, "hazardous", labelLoc="right", color="grey") %>% 
+dyShading(12, 35, color="#ffffcc", axis="y") %>%
+dyShading(35, 55, color="#ffebcc", axis="y") %>%
+dyShading(55, 150, color="#ffcccc", axis="y") %>%
+dyShading(150, 250, color="#e6ccff", axis="y") %>%
+dyShading(250, 500, color="#ffddcc", axis="y") %>%
+dyOptions(colors = RColorBrewer::brewer.pal(3, "Set1")) %>%
+dyRangeSelector(dateWindow=c(as.Date("2017-01-01"), max(quality$date))) %>% 
+dyLegend(width = 200, show = "follow")
+```
+
+## Tiantan (Temple of Heaven)
+```{r tiantan}
+dygraph(
+    quality[station_id=="tiantan_aq", .(date, lower, avg, upper)], 
+    main="Tiantan Daily PM2.5 Concentration (Max clipped to 500)") %>% 
+dyAxis("x", drawGrid=F) %>% dyAxis("y", drawGrid=F) %>%
+dySeries(c("lower", "avg", "upper"), label="PM2.5") %>%
+dyShading(0, 12, color="#ccff99", axis="y") %>%
+dyLimit(0, "good", labelLoc="right", color="grey") %>%
+dyLimit(12, "moderate", labelLoc="right", color="grey") %>%
+dyLimit(35, "unhealthy for sensitive groups", labelLoc="right", color="grey") %>%
+dyLimit(55, "unhealthy", labelLoc="right", color="grey") %>%    
+dyLimit(150, "very unhealthy", labelLoc="right", color="grey") %>% 
+dyLimit(250, "hazardous", labelLoc="right", color="grey") %>% 
+dyShading(12, 35, color="#ffffcc", axis="y") %>%
+dyShading(35, 55, color="#ffebcc", axis="y") %>%
+dyShading(55, 150, color="#ffcccc", axis="y") %>%
+dyShading(150, 250, color="#e6ccff", axis="y") %>%
+dyShading(250, 500, color="#ffddcc", axis="y") %>%
+dyOptions(colors = RColorBrewer::brewer.pal(3, "Set1")) %>%
+dyRangeSelector(dateWindow=c(as.Date("2017-01-01"), max(quality$date))) %>% 
+dyLegend(width = 200, show = "follow")
+```
+
+## Miyun (A Suburban District)
+```{r miyun}
+dygraph(
+    quality[station_id=="miyun_aq", .(date, lower, avg, upper)], 
+    main="Miyun Daily PM2.5 Concentration (Max clipped to 500)") %>% 
+dyAxis("x", drawGrid=F) %>% dyAxis("y", drawGrid=F) %>%
+dySeries(c("lower", "avg", "upper"), label="PM2.5") %>%
+dyShading(0, 12, color="#ccff99", axis="y") %>%
+dyLimit(0, "good", labelLoc="right", color="grey") %>%
+dyLimit(12, "moderate", labelLoc="right", color="grey") %>%
+dyLimit(35, "unhealthy for sensitive groups", labelLoc="right", color="grey") %>%
+dyLimit(55, "unhealthy", labelLoc="right", color="grey") %>%    
+dyLimit(150, "very unhealthy", labelLoc="right", color="grey") %>% 
+dyLimit(250, "hazardous", labelLoc="right", color="grey") %>% 
+dyShading(12, 35, color="#ffffcc", axis="y") %>%
+dyShading(35, 55, color="#ffebcc", axis="y") %>%
+dyShading(55, 150, color="#ffcccc", axis="y") %>%
+dyShading(150, 250, color="#e6ccff", axis="y") %>%
+dyShading(250, 500, color="#ffddcc", axis="y") %>%
+dyOptions(colors = RColorBrewer::brewer.pal(3, "Set1")) %>%
+dyRangeSelector(dateWindow=c(as.Date("2017-01-01"), max(quality$date))) %>% 
+dyLegend(width = 200, show = "follow")
+```
